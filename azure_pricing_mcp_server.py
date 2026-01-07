@@ -2,14 +2,17 @@ import logging
 import logging.config
 import uvicorn
 import requests
-from typing import List, Dict, Any
+import contextlib
+from typing import List, Dict, Any, AsyncIterator
 
 # MCP imports
 from mcp.server.fastmcp import FastMCP
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 from starlette.responses import JSONResponse
 from starlette.endpoints import HTTPEndpoint
+from starlette.types import Receive, Scope, Send
 
 # Import configuration
 from config import settings, logging_config
@@ -30,6 +33,27 @@ def log(message: str, level: str = "info"):
 
 # Create MCP server
 mcp = FastMCP("Azure Pricing MCP")
+
+# Create session manager for HTTP Streamable transport
+session_manager = StreamableHTTPSessionManager(
+    app=mcp._mcp_server,
+    event_store=None,
+    json_response=True,
+    stateless=True,
+)
+
+async def handle_streamable_http(scope: Scope, receive: Receive, send: Send) -> None:
+    """Handle HTTP Streamable requests."""
+    await session_manager.handle_request(scope, receive, send)
+
+@contextlib.asynccontextmanager
+async def lifespan(app: Starlette) -> AsyncIterator[None]:
+    """Context manager for session manager."""
+    async with session_manager.run():
+        try:
+            yield
+        finally:
+            logger.info("Application shutting down...")
 
 @mcp.tool(description="""
     [STEP 1] List all available service families in Azure.
@@ -519,10 +543,14 @@ class ToolsEndpoint(HTTPEndpoint):
         return JSONResponse(tools)
 
 # Create the Starlette application with routes
-app = Starlette(routes=[
-    Mount("/mcp", app=mcp.sse_app()),
-    Route("/tools", ToolsEndpoint)
-])
+app = Starlette(
+    debug=settings.MCP_DEBUG,
+    routes=[
+        Mount("/mcp/", app=handle_streamable_http),  # Note the trailing slash for HTTP Streamable
+        Route("/tools", ToolsEndpoint)
+    ],
+    lifespan=lifespan
+)
 
 # Create the FastAPI application with Model Context Protocol
 def get_application():
@@ -531,7 +559,7 @@ def get_application():
 
 if __name__ == "__main__":
     log(f"Starting MCP server at http://{settings.MCP_HOST}:{settings.MCP_PORT}")
-    log(f"SSE Endpoint: http://{settings.MCP_HOST}:{settings.MCP_PORT}/sse")
+    log(f"HTTP Streamable Endpoint: http://{settings.MCP_HOST}:{settings.MCP_PORT}/mcp/")
     log(f"Tools Endpoint: http://{settings.MCP_HOST}:{settings.MCP_PORT}/tools")
     log(f"Debug mode: {'ON' if settings.MCP_DEBUG else 'OFF'}")
     log(f"Auto-reload: {'ENABLED' if settings.MCP_RELOAD else 'DISABLED'}")
