@@ -54,7 +54,9 @@ The MCP server provides a structured four-step workflow for accessing Azure pric
 3. **Get products** - Get products associated with a service
 4. **Calculate monthly costs** - Calculate the monthly cost for a specific product
 
-## Starting the MCP Server
+## Running the MCP Server
+
+### Option 1: Run Locally with Python
 
 ```bash
 source .venv/bin/activate  # Activate the virtual environment
@@ -62,6 +64,21 @@ python azure_pricing_mcp_server.py
 ```
 
 The server will start at `http://0.0.0.0:8080` by default.
+
+### Option 2: Run with Docker
+
+**Build and run the container locally:**
+
+```bash
+docker build -t mcp-azure-pricing .
+docker run -p 8080:8080 mcp-azure-pricing
+```
+
+**Build with Azure Container Registry:**
+
+```bash
+az acr build --image mcp-azure-pricing:v1 --file Dockerfile .
+```
 
 ### Available Endpoints
 
