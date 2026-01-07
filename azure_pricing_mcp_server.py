@@ -520,7 +520,7 @@ class ToolsEndpoint(HTTPEndpoint):
 
 # Create the Starlette application with routes
 app = Starlette(routes=[
-    Mount("/", app=mcp.sse_app()),
+    Mount("/mcp", app=mcp.sse_app()),
     Route("/tools", ToolsEndpoint)
 ])
 
